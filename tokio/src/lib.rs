@@ -55,6 +55,14 @@ impl Deref for Lines<Input> {
     }
 }
 
+impl Deref for Lines<Output> {
+    type Target = ValuesInfo;
+
+    fn deref(&self) -> &Self::Target {
+        &self.info
+    }
+}
+
 impl<Direction: DirectionType> Lines<Direction> {
     /// Get the value of GPIO lines
     ///
