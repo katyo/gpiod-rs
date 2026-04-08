@@ -24,6 +24,7 @@ pub use gpiod_core::{
 };
 
 use tokio::{fs, fs::OpenOptions, io::unix::AsyncFd, task::spawn_blocking};
+use tokio::io::Ready;
 
 async fn asyncify<F, T>(f: F) -> Result<T>
 where
@@ -81,14 +82,22 @@ impl Lines<Input> {
 
         #[cfg(feature = "v2")]
         {
-            let _ = self.file.readable().await?;
-
-            let mut event = gpiod_core::RawEvent::default();
-            let len = self.file.get_ref().read(event.as_mut())?;
-
-            gpiod_core::check_size(len, &event)?;
-
-            event.as_event(self.info.index())
+            loop {
+                let mut guard = self.file.readable().await?;
+                let mut event = gpiod_core::RawEvent::default();
+                match self.file.get_ref().read(event.as_mut()) {
+                    Ok(len) => {
+                        gpiod_core::check_size(len, &event)?;
+                        return event.as_event(self.info.index());
+                    },
+                    Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                        guard.clear_ready_matching(Ready::READABLE);
+                    },
+                    Err(e) => {
+                        return Err(e.into());
+                    }
+                }
+            }
         }
     }
 }
