@@ -276,6 +276,7 @@ pub struct Options<Direction = (), Lines = (), Consumer = ()> {
     active: Active,
     edge: Option<EdgeDetect>,
     bias: Option<Bias>,
+    debounce_period: Option<Time>,
     drive: Option<Drive>,
     values: Option<Values>,
     consumer: Consumer,
@@ -290,6 +291,7 @@ impl Options {
             active: Default::default(),
             edge: Default::default(),
             bias: Default::default(),
+            debounce_period: Default::default(),
             drive: Default::default(),
             values: Default::default(),
             consumer: "",
@@ -304,6 +306,7 @@ impl Options {
             active: Default::default(),
             edge: Default::default(),
             bias: Default::default(),
+            debounce_period: Default::default(),
             drive: Default::default(),
             values: Default::default(),
             consumer: "",
@@ -323,6 +326,7 @@ impl<Direction, Lines, OldConsumer> Options<Direction, Lines, OldConsumer> {
             active: self.active,
             edge: self.edge,
             bias: self.bias,
+            debounce_period: self.debounce_period,
             drive: self.drive,
             values: self.values,
             consumer,
@@ -357,6 +361,7 @@ impl<Direction, Lines: AsRef<[LineId]>, Consumer: AsRef<str>> Options<Direction,
             active: self.active,
             edge: self.edge,
             bias: self.bias,
+            debounce_period: self.debounce_period,
             drive: self.drive,
             values: self.values,
             consumer: self.consumer.as_ref().to_owned(),
@@ -370,6 +375,17 @@ impl<Lines, Consumer> Options<Input, Lines, Consumer> {
     /// Available only for inputs
     pub fn edge(mut self, edge: EdgeDetect) -> Self {
         self.edge = Some(edge);
+        self
+    }
+
+    /// Configure GPIO input debounce period.
+    ///
+    /// Available only for inputs.
+    ///
+    /// This is supported only by the Linux GPIO character device v2 ABI.
+    /// It is ignored when the crate is built without the `v2` feature.
+    pub fn debounce(mut self, debounce_period: Time) -> Self {
+        self.debounce_period = Some(debounce_period);
         self
     }
 }
@@ -480,6 +496,7 @@ impl Internal<ChipInfo> {
             active,
             edge,
             bias,
+            debounce_period,
             drive,
             values,
             consumer,
@@ -491,6 +508,7 @@ impl Internal<ChipInfo> {
 
         #[cfg(not(feature = "v2"))]
         let fd = {
+            let _ = debounce_period;
             let mut request =
                 raw::v1::GpioHandleRequest::new(lines, direction, active, bias, drive, consumer)?;
 
@@ -510,7 +528,15 @@ impl Internal<ChipInfo> {
         #[cfg(feature = "v2")]
         let fd = {
             let mut request = raw::v2::GpioLineRequest::new(
-                lines, direction, active, edge, bias, drive, values, consumer,
+                lines,
+                direction,
+                active,
+                edge,
+                bias,
+                debounce_period,
+                drive,
+                values,
+                consumer,
             )?;
 
             unsafe_call!(raw::v2::gpio_get_line(fd, &mut request))?;
