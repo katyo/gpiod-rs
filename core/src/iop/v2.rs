@@ -1,6 +1,6 @@
 use crate::{
     raw::v2::*, utils::*, Active, AsValuesMut, Bias, Direction, Drive, Edge, EdgeDetect, Event,
-    LineId, LineInfo, LineMap, Result, Values,
+    LineId, LineInfo, LineMap, Result, Time, Values,
 };
 
 /// Raw event ro read from fd
@@ -80,6 +80,7 @@ impl GpioLineRequest {
         active: Active,
         edge: Option<EdgeDetect>,
         bias: Option<Bias>,
+        debounce_period: Option<Time>,
         drive: Option<Drive>,
         values: Option<Values>,
         consumer: &str,
@@ -123,6 +124,24 @@ impl GpioLineRequest {
                 Bias::PullUp => GPIO_LINE_FLAG_BIAS_PULL_UP,
                 Bias::PullDown => GPIO_LINE_FLAG_BIAS_PULL_DOWN,
                 Bias::Disable => GPIO_LINE_FLAG_BIAS_DISABLED,
+            }
+        }
+
+        if matches!(direction, Direction::Input) {
+            if let Some(debounce_period) = debounce_period {
+                let debounce_period_us = debounce_period.as_micros().try_into().map_err(|_| {
+                    invalid_input("Debounce period is larger than GPIO chardev supports")
+                })?;
+
+                config.num_attrs = 1;
+                let attr = &mut config.attrs[0];
+                attr.attr.id = GPIO_LINE_ATTR_ID_DEBOUNCE;
+                attr.mask = if lines.len() == u64::BITS as usize {
+                    u64::MAX
+                } else {
+                    (1u64 << lines.len()) - 1
+                };
+                attr.attr.val.debounce_period_us = debounce_period_us;
             }
         }
 
